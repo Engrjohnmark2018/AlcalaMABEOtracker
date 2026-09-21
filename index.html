@@ -2318,14 +2318,7 @@ function wireEvents() {
       if (t.id === 'to-purpose') toDraft.purpose = t.value;
       else if (t.id === 'to-dest') toDraft.dest = t.value;
       else { toDraft.dateText = t.value; if (t.value !== fmtRange(toDraft.from, toDraft.to)) toDateEdited = true; }
-      const host = $('#view-travel');
-      if (host && ui.view === 'travel') {
-        const v = toValues();
-        const cells = Array.prototype.slice.call(host.querySelectorAll('.previewTable tbody tr td:nth-child(2)'));
-        /* simple in-place preview refresh: re-render the whole card is cheaper to reason about */
-        clearTimeout(window.__toT);
-        window.__toT = setTimeout(() => { if (ui.view === 'travel') renderTravel(); }, 250);
-      }
+      toRefreshPreview();
     }
   });
   document.addEventListener('change', (ev) => {
@@ -2807,6 +2800,35 @@ function enforcePermissions(root) {
    ========================================================================== */
 const TO_KEY = 'abe-alcala-b.totemplate.v1';
 const TO_FIELDS = ['CreationDate', 'Purpose', 'TravelDate', 'Destination'];
+
+/* One row of the "what will be inserted" preview. Shared by the full render and by
+   the in-place refresh below, so the two can never drift apart. */
+function toPrevCellHtml(val, extra) {
+  return (val ? '<b>' + esc(val).replace(/\n/g, '<br>') + '</b>' : '<span class="muted">— empty —</span>') +
+    (extra ? '<div class="small muted">' + extra + '</div>' : '');
+}
+function toPrevRowHtml(key, val, extra) {
+  return '<tr data-prev="' + esc(key) + '"><td class="nowrap"><span class="mono">{{' + esc(key) + '}}</span></td>' +
+    '<td>' + toPrevCellHtml(val, extra) + '</td></tr>';
+}
+function toPrevExtra(key, v) {
+  if (key === 'Purpose') return v.Purpose ? v.Purpose.length + ' characters' : '';
+  if (key === 'TravelDate') return (isDate(toDraft.from) && isDate(toDraft.to)) ? diffDays(toDraft.to, toDraft.from) + 1 + ' day(s) incl. both dates' : '';
+  return '';
+}
+/* Refresh ONLY the preview rows while you type. Deliberately never touches the form:
+   re-rendering the view here replaced the textarea on every pause, which threw away
+   the caret and made the box stop accepting letters (and left Space to scroll the page). */
+function toRefreshPreview() {
+  const host = $('#view-travel');
+  if (!host || ui.view !== 'travel') return;
+  const v = toValues();
+  TO_FIELDS.forEach((k) => {
+    const tr = host.querySelector('tr[data-prev="' + k + '"]');
+    const td = tr && tr.children[1];
+    if (td) td.innerHTML = toPrevCellHtml(v[k], toPrevExtra(k, v));
+  });
+}
 const TO_META_KEY = 'abe-alcala-b.totemplate.meta.v1';   /* a few bytes describing the file, for instant paint */
 const TO_MAX_BYTES = 20 * 1024 * 1024;      /* the .docx lives in IndexedDB as raw bytes — 20 MB is plenty */
 const TO_MAX_BYTES_LS = 1500000;            /* only for browsers with no IndexedDB at all (base64 fallback) */
@@ -3103,10 +3125,6 @@ function renderTravelCore() {
         ? '<span class="chip pend">Template loaded · ' + t.missing.length + ' placeholder(s) missing</span>'
         : '<span class="chip done">Template ready</span>')
     : '<span class="chip late">No template uploaded</span>';
-  const prevRow = (label, key, val, extra) =>
-    '<tr><td class="nowrap"><span class="mono">{{' + esc(key) + '}}</span></td>' +
-    '<td>' + (val ? '<b>' + esc(val).replace(/\n/g, '<br>') + '</b>' : '<span class="muted">— empty —</span>') +
-    (extra ? '<div class="small muted">' + extra + '</div>' : '') + '</td></tr>';
 
   $('#view-travel').innerHTML = '' +
     '<div class="spread" style="margin:6px 0 12px"><div><h2 style="font-size:20px">Travel Order</h2>' +
@@ -3167,10 +3185,7 @@ function renderTravelCore() {
       '<div class="card">' +
         '<div class="cardHead"><div><h3>What will be inserted</h3><div class="sub">Preview — this is exactly what replaces the placeholders</div></div></div>' +
         '<div class="tableWrap"><table class="tbl" style="min-width:0"><tbody>' +
-          prevRow('CreationDate', 'CreationDate', v.CreationDate, '') +
-          prevRow('Purpose', 'Purpose', v.Purpose, v.Purpose ? v.Purpose.length + ' characters' : '') +
-          prevRow('TravelDate', 'TravelDate', v.TravelDate, (isDate(toDraft.from) && isDate(toDraft.to)) ? diffDays(toDraft.to, toDraft.from) + 1 + ' day(s) incl. both dates' : '') +
-          prevRow('Destination', 'Destination', v.Destination, '') +
+          TO_FIELDS.map((k) => toPrevRowHtml(k, v[k], toPrevExtra(k, v))).join('') +
         '</tbody></table></div>' +
         '<hr class="sep">' +
         '<div class="small muted"><b>How it works.</b> The generator opens your uploaded .docx, replaces the four placeholders (inside the body, headers and footers — even when Word split them across formatting), and downloads a new file. Nothing is stored: keep the downloaded file.</div>' +
@@ -5469,7 +5484,22 @@ function ppaRowsFiltered() {
 function ppaSetSort(col) {
   const s = ppaSortState();
   if (s.col === col) s.dir = -s.dir; else { s.col = col; s.dir = 1; }
-  saveUi(); renderPpa();
+  saveUi();
+  /* re-sort the table in place: a full render would rebuild the search box and the
+     whole card, which loses the caret and the scroll position for no reason */
+  ppaResultsRefresh();
+}
+function ppaHeadHtml(heads, s) {
+  const arrow = (i) => (s.col === i ? (s.dir === 1 ? ' ▴' : ' ▾') : '');
+  return heads.map((h, i) => '<th><button class="ppaSort' + (s.col === i ? ' on' : '') + '" data-act="ppa-sort" data-col="' + i + '" ' +
+    'title="Sort by ' + esc(h) + '">' + esc(h) + arrow(i) + '</button></th>').join('');
+}
+function ppaBodyHtml(shown, heads) {
+  return shown.map((x) => '<tr>' + x.r.map((c, i) => {
+    const txt = String(c == null ? '' : c);
+    const numc = /^\s*-?[₱$]?\s*[\d,]+(\.\d+)?\s*$/.test(txt) && txt.trim() !== '';
+    return '<td' + (numc ? ' class="num"' : '') + ' data-th="' + esc(heads[i]) + '">' + (txt === '' ? '<span class="muted">—</span>' : esc(txt)) + '</td>';
+  }).join('') + '</tr>').join('');
 }
 function renderPpa() {
   const host = $('#view-ppa');
@@ -5489,14 +5519,8 @@ function renderPpa() {
   const s = ppaSortState();
   const rows = ppaRowsFiltered();
   const shown = rows.slice(0, PPA_SHOW_ROWS);
-  const arrow = (i) => (s.col === i ? (s.dir === 1 ? ' ▴' : ' ▾') : '');
-  const head = heads.map((h, i) => '<th><button class="ppaSort' + (s.col === i ? ' on' : '') + '" data-act="ppa-sort" data-col="' + i + '" ' +
-    'title="Sort by ' + esc(h) + '">' + esc(h) + arrow(i) + '</button></th>').join('');
-  const body = shown.map((x) => '<tr>' + x.r.map((c, i) => {
-    const txt = String(c == null ? '' : c);
-    const numc = /^\s*-?[₱$]?\s*[\d,]+(\.\d+)?\s*$/.test(txt) && txt.trim() !== '';
-    return '<td' + (numc ? ' class="num"' : '') + ' data-th="' + esc(heads[i]) + '">' + (txt === '' ? '<span class="muted">—</span>' : esc(txt)) + '</td>';
-  }).join('') + '</tr>').join('');
+  const head = ppaHeadHtml(heads, s);
+  const body = ppaBodyHtml(shown, heads);
   host.innerHTML = '' +
     '<div class="card">' +
       '<div class="cardHead"><div><h3>Programs, Projects &amp; Activities</h3>' +
@@ -5507,15 +5531,33 @@ function renderPpa() {
       '<div class="toolbar" style="margin:6px 0 10px">' +
         '<div class="searchWrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
           '<input class="input" id="ppaSearch" placeholder="Search the PPA list…" value="' + esc(ui.ppaQ || '') + '"></div>' +
-        (ui.ppaQ ? '<button class="btn sm" data-act="ppa-clear-search">Clear search</button>' : '') +
-        '<span class="small muted" style="margin-left:auto">' + (ui.ppaQ || s.col >= 0
-          ? 'Showing ' + rows.length + ' of ' + p.rows.length + ' rows'
-          : p.rows.length + ' rows') + '</span>' +
+        '<span id="ppaClearWrap">' + (ui.ppaQ ? '<button class="btn sm" data-act="ppa-clear-search">Clear search</button>' : '') + '</span>' +
+        '<span class="small muted" id="ppaCount" style="margin-left:auto">' + ppaCountText(rows.length, p.rows.length, s) + '</span>' +
       '</div>' +
-      '<div class="tableWrap"><table class="tbl ppaTbl"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
-      (rows.length > PPA_SHOW_ROWS ? '<div class="small muted" style="margin-top:8px">Showing the first ' + PPA_SHOW_ROWS + ' of ' + rows.length + ' matching rows — use the search box to narrow the list.</div>' : '') +
-      (rows.length === 0 ? '<div class="empty"><b>Nothing matches that search</b>Try a shorter word, or clear the search box.</div>' : '') +
+      '<div id="ppaResults">' + ppaResultsHtml(head, body, rows) + '</div>' +
     '</div>';
+}
+function ppaCountText(n, total, s) {
+  return (ui.ppaQ || s.col >= 0) ? 'Showing ' + n + ' of ' + total + ' rows' : total + ' rows';
+}
+function ppaResultsHtml(head, body, rows) {
+  return '<div class="tableWrap"><table class="tbl ppaTbl"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+    (rows.length > PPA_SHOW_ROWS ? '<div class="small muted" style="margin-top:8px">Showing the first ' + PPA_SHOW_ROWS + ' of ' + rows.length + ' matching rows — use the search box to narrow the list.</div>' : '') +
+    (rows.length === 0 ? '<div class="empty"><b>Nothing matches that search</b>Try a shorter word, or clear the search box.</div>' : '');
+}
+/* Rebuild the table and the count line only — used while typing in the search box.
+   The search input lives outside this block, so its value, focus and caret survive. */
+function ppaResultsRefresh() {
+  const host = $('#view-ppa');
+  if (!host || !ppaData()) return;
+  const box = host.querySelector('#ppaResults');
+  if (!box) return;
+  const p = ppaData(), s = ppaSortState(), rows = ppaRowsFiltered(), heads = ppaHeaders();
+  const head = ppaHeadHtml(heads, s);
+  const body = ppaBodyHtml(rows.slice(0, PPA_SHOW_ROWS), heads);
+  box.innerHTML = ppaResultsHtml(head, body, rows);
+  const c = host.querySelector('#ppaCount'); if (c) c.textContent = ppaCountText(rows.length, p.rows.length, s);
+  const cw = host.querySelector('#ppaClearWrap'); if (cw) cw.innerHTML = ui.ppaQ ? '<button class="btn sm" data-act="ppa-clear-search">Clear search</button>' : '';
 }
 function renderPpaInto() { renderPpa(); }
 
@@ -5554,12 +5596,13 @@ function ppaSettingsHtml() {
 
 /* ------------------------------------------------------------ event wiring -- */
 (function ppaWire() {
-  let qTimer = null;
   document.addEventListener('input', (ev) => {
     if (ev.target && ev.target.id === 'ppaSearch') {
       ui.ppaQ = ev.target.value;
-      clearTimeout(qTimer);
-      qTimer = setTimeout(() => { saveUi(); renderPpa(); const el = $('#ppaSearch'); if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (e) {} } }, 180);
+      saveUi();
+      /* Only the table is rebuilt — re-rendering the view would replace the search box
+         mid-keystroke and steal the caret, so typing would stop. */
+      ppaResultsRefresh();
     }
   });
   document.addEventListener('change', (ev) => {
@@ -5570,7 +5613,12 @@ function ppaSettingsHtml() {
     if (!t) return;
     const act = t.getAttribute('data-act') || '';
     if (act === 'ppa-sort') { ppaSetSort(parseInt(t.getAttribute('data-col'), 10)); return; }
-    if (act === 'ppa-clear-search') { ui.ppaQ = ''; saveUi(); renderPpa(); return; }
+    if (act === 'ppa-clear-search') {
+      ui.ppaQ = ''; saveUi();
+      const box = $('#ppaSearch'); if (box) { box.value = ''; box.focus(); }
+      ppaResultsRefresh();
+      return;
+    }
     if (act === 'ppa-export') { ppaExportCsv(); return; }
     if (act === 'ppa-clear') { ppaClear(); return; }
     if (act === 'goto-ppa') { go('ppa'); return; }
@@ -5629,5 +5677,6 @@ async function boot() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
 </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
