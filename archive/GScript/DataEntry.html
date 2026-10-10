@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top" />
+  <style>
+    body { font-family: Arial, sans-serif; padding: 12px; }
+    .list { border:1px solid #ddd; padding:8px; border-radius:10px; margin-bottom:12px; }
+    .item { padding:8px; border-bottom:1px solid #eee; cursor:pointer; }
+    .item:last-child { border-bottom:0; }
+    .small { font-size: 12px; color:#555; }
+    label { display:block; font-weight:700; margin-top:10px; }
+    input, textarea, select { width:100%; padding:8px; box-sizing:border-box; margin-top:4px; }
+    textarea { height: 70px; }
+    .row2 { display:flex; gap:4px; }
+    .row2 > div { flex:1; min-width:0; }
+    .row2 input { padding:8px 4px; font-size: 13px; }
+    .btn { width:100%; padding:10px; border:0; cursor:pointer; font-size:14px; margin-top:10px; border-radius:10px; }
+    .primary { background:#1a73e8; color:white; }
+    .muted { background:#f1f3f4; }
+    .danger { background:#d93025; color:white; }
+    .readonly { background:#f7f7f7; }
+
+    /* Hide the header and the list container */
+h3, #list { 
+  display: none; 
+}
+
+/* Hide the Request ID label and the input field */
+label[for="requestId"], #requestId {
+  display: none;
+}
+
+/* Hide the checkbox section */
+#generate, label:has(#generate) {
+  display: none;
+}
+
+/* Hide Creation Date label and input */
+#creationDate, label:has(+ #creationDate) {
+  display: none;
+}
+
+.btn:disabled {
+  background: #ccc !important;
+  color: #666 !important;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+  </style>
+</head>
+<body>
+  <h3>Travel Data Entry</h3>
+
+  <div class="list" id="list"><div class="small">Loading…</div></div>
+
+  <!-- <label>Selected Request</label> -->
+  <input id="requestId" disabled placeholder="REQ-..." />
+
+  <label><input type="checkbox" id="generate" checked /> Mark for batch generation</label>
+
+  <label>Creation Date</label>
+  <input type="date" id="creationDate" />
+
+  <label>Destination (required)</label>
+  <select id="destination" onchange="onDestinationChange()">
+    <option value="">Loading…</option>
+  </select>
+
+  <label>Route (auto)</label>
+  <input id="route" class="readonly" readonly />
+
+  <label>Transportation (auto)</label>
+  <input id="transportation" class="readonly" readonly />
+
+  <label>Fare (auto)</label>
+  <input id="fare" class="readonly" readonly />
+
+  <label>Date of Travel (required)</label>
+  <div class="row2">
+    <div><input type="date" id="travelStart" onchange="syncEndDate()" /></div>
+    <div><input type="date" id="travelEnd" /></div>
+  </div>
+
+  <label>Purpose (required)</label>
+  <textarea id="purpose"></textarea>
+
+  <label>Diem</label>
+  <input type="number" id="diem" value="0" />
+
+  <div><button class="btn primary" onclick="addNew()">Add New</button></div>
+  <!-- <button class="btn danger" onclick="removeReq()">Delete Selected</button> -->
+  <button class="btn danger" style="background:#b71c1c;" onclick="deleteChecked()">Delete Selected</button>
+
+  <script>
+    function show(msg){ alert(msg); }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, m => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[m]));
+    }
+
+    function getPayload() {
+      const start = document.getElementById("travelStart").value;
+      const end = document.getElementById("travelEnd").value;
+      let travelStr = start;
+      if (start && end && start !== end) {
+        travelStr = start + " to " + end;
+      }
+
+      return {
+        GENERATE: document.getElementById("generate").checked,
+        CREATION_DATE: document.getElementById("creationDate").value,
+        DESTINATION: document.getElementById("destination").value,
+        DATE_OF_TRAVEL: travelStr.trim(),
+        PURPOSE: document.getElementById("purpose").value.trim(),
+        DIEM: document.getElementById("diem").value
+      };
+    }
+
+    function setForm(d) {
+      document.getElementById("requestId").value = d.REQUEST_ID || "";
+      document.getElementById("generate").checked = !!d.GENERATE;
+
+      document.getElementById("creationDate").value = d.CREATION_DATE || "";
+      document.getElementById("destination").value = d.DESTINATION || "";
+
+      document.getElementById("route").value = d.ROUTE || "";
+      document.getElementById("transportation").value = d.TRANSPORTATION || "";
+      document.getElementById("fare").value = d.FARE || "";
+
+      // Handle Date of Travel range string
+      const val = d.DATE_OF_TRAVEL || "";
+      if (val.includes(" to ")) {
+        const parts = val.split(" to ");
+        document.getElementById("travelStart").value = parts[0];
+        document.getElementById("travelEnd").value = parts[1];
+      } else {
+        // Try to set as single date if valid ISO, else leave blank
+        document.getElementById("travelStart").value = val.length === 10 ? val : "";
+        document.getElementById("travelEnd").value = val.length === 10 ? val : "";
+      }
+
+      document.getElementById("purpose").value = d.PURPOSE || "";
+      document.getElementById("diem").value = d.DIEM || 0;
+    }
+
+    function clearForm() {
+      document.getElementById("requestId").value = "";
+      document.getElementById("generate").checked = true;
+      document.getElementById("creationDate").value = new Date().toISOString().split('T')[0];
+
+      document.getElementById("destination").value = "";
+      document.getElementById("route").value = "";
+      document.getElementById("transportation").value = "";
+      document.getElementById("fare").value = "";
+
+      document.getElementById("travelStart").value = "";
+      document.getElementById("travelEnd").value = "";
+      document.getElementById("purpose").value = "";
+      document.getElementById("diem").value = 0;
+    }
+
+    function refreshList() {
+      google.script.run.withSuccessHandler(items => {
+        const list = document.getElementById("list");
+        if (!items.length) {
+          list.innerHTML = '<div class="small">No requests yet.</div>';
+          return;
+        }
+        list.innerHTML = items.map(it => `
+          <div class="item" onclick="selectReq('${it.REQUEST_ID}')">
+            <div><b>${escapeHtml(it.DESTINATION || '(No destination)')}</b> — ${escapeHtml(it.PRETTY_DATE || it.DATE_OF_TRAVEL || '')}</div>
+            <div class="small">${escapeHtml(it.PURPOSE || '')}</div>
+          </div>
+        `).join("");
+      }).listRequests(200);
+    }
+
+    function loadDestinations() {
+      google.script.run.withSuccessHandler(dests => {
+        const sel = document.getElementById("destination");
+        sel.innerHTML = '<option value="">-- Select Destination --</option>' +
+          dests.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join("");
+      }).getDestinations();
+    }
+
+    function onDestinationChange() {
+      const dest = document.getElementById("destination").value;
+      if (!dest) {
+        document.getElementById("route").value = "";
+        document.getElementById("transportation").value = "";
+        document.getElementById("fare").value = "";
+        return;
+      }
+      google.script.run.withSuccessHandler(res => {
+        if (!res) {
+          show("Destination not found in fare matrix: " + dest);
+          return;
+        }
+        document.getElementById("route").value = res.ROUTE || "";
+        document.getElementById("transportation").value = res.TRANSPORTATION || "";
+        document.getElementById("fare").value = res.FARE || 0;
+      }).lookupFareByDestination(dest);
+    }
+
+    function syncEndDate() {
+      const start = document.getElementById("travelStart").value;
+      const end = document.getElementById("travelEnd");
+      if (start && !end.value) {
+        end.value = start;
+      }
+    }
+
+    function selectReq(id) {
+      google.script.run.withSuccessHandler(data => {
+        setForm(data);
+      }).getRequestById(id);
+    }
+
+// Helper to toggle button states
+function setBtnState(btnClass, text, isProcessing) {
+  const btn = document.querySelector(btnClass);
+  if (!btn) return;
+  btn.disabled = isProcessing;
+  btn.innerText = text;
+}
+
+function addNew() {
+  const p = getPayload();
+  if (!p.DESTINATION || !p.DATE_OF_TRAVEL || !p.PURPOSE) {
+    show("Required: Destination, Date of Travel, Purpose.");
+    return;
+  }
+
+  setBtnState(".primary", "Adding...", true);
+
+  google.script.run
+    .withSuccessHandler(res => {
+      setBtnState(".primary", "Add New", false);
+      show("Added successfully!");
+      
+      // 1. Refresh the sidebar list to show the new entry
+      refreshList();
+      
+      // 2. Clear the form fields back to empty/initial values
+      clearForm();
+      
+      // Note: We removed selectReq(res.REQUEST_ID) because you want 
+      // the form cleared, not populated with the item you just added.
+    })
+    .withFailureHandler(err => {
+      setBtnState(".primary", "Add New", false);
+      show("Error: " + err.message);
+    })
+    .addRequest(p);
+}
+
+
+
+function removeReq() {
+  const id = document.getElementById("requestId").value;
+  if (!id) { show("Select a request first."); return; }
+  if (!confirm("Delete this request?")) return;
+
+  setBtnState(".danger", "Deleting...", true);
+
+  google.script.run
+    .withSuccessHandler(() => {
+      setBtnState(".danger", "Delete Selected", false);
+      show("Deleted!");
+      clearForm();
+      refreshList();
+    })
+    .withFailureHandler(err => {
+      setBtnState(".danger", "Delete Selected", false);
+      show("Error: " + err.message);
+    })
+    .deleteRequest(id);
+}
+
+function deleteChecked() {
+  if (!confirm("Delete ALL checked rows?")) return;
+
+  // Targeting the second danger button if you added the batch delete
+  const batchBtn = document.querySelectorAll(".danger")[1]; 
+  if(batchBtn) {
+    batchBtn.disabled = true;
+    batchBtn.innerText = "Deleting Batch...";
+  }
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if(batchBtn) {
+        batchBtn.disabled = false;
+        batchBtn.innerText = "Delete All Checked";
+      }
+      show("Deleted " + res.count + " rows!");
+      refreshList();
+      clearForm();
+    })
+    .withFailureHandler(err => {
+      if(batchBtn) {
+        batchBtn.disabled = false;
+        batchBtn.innerText = "Delete All Checked";
+      }
+      show("Error: " + err.message);
+    })
+    .deleteCheckedRequests();
+}
+
+    // Init
+    clearForm();
+    loadDestinations();
+    refreshList();
+  </script>
+</body>
+</html>
