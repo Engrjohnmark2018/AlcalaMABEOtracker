@@ -128,3 +128,21 @@ test('autoMigrateStorage preserves existing work entries while syncing TEV reque
   assert.ok(trv.requestId);
 });
 
+test('Calendar print styling ensures entries, purpose pills and colors are visible during print', async () => {
+  const css = await readFile('src/assets/styles/main.css', 'utf-8');
+
+  // 1. Responsive media query hiding .calEv is scoped to screen so print is not treated as mobile
+  assert.ok(css.includes('@media screen and (max-width:760px)'), 'Mobile media query must be scoped to screen');
+
+  // 2. Print styles explicitly make .calEv visible with display: block !important
+  assert.match(css, /\.calEv,\s*\.calEv-overflow\s*\{[^}]*display:\s*block\s*!important/s);
+
+  // 3. Exact color adjust is enforced for crisp badges and backgrounds
+  assert.match(css, /print-color-adjust:\s*exact\s*!important/);
+
+  // 4. Status badges including travel order .calEv.t have dedicated high-contrast print colors
+  assert.match(css, /\.calEv\.t\s*\{[^}]*background:\s*#f5f3ff\s*!important/s);
+  assert.match(css, /\.calEv\.d\s*\{[^}]*background:\s*#e7f6ec\s*!important/s);
+  assert.match(css, /\.calEv\.p\s*\{[^}]*background:\s*#fffbeb\s*!important/s);
+});
+

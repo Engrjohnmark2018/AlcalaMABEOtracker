@@ -300,6 +300,7 @@ html[data-theme="dark"] .calGrid td.sel{background:#132a1e}
 .calEv.p{background:var(--pend-bg);border-left-color:var(--pend);color:var(--pend)}
 .calEv.l{background:var(--late-bg);border-left-color:var(--late);color:var(--late)}
 .moreEv{font-size:10.5px;color:var(--muted);margin-top:2px;display:block}
+.calEv-overflow{display:none}
 .calYearWrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
 .mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;cursor:pointer;transition:border-color .12s,box-shadow .12s}
 .mini:hover{border-color:var(--brand-2);box-shadow:var(--shadow-sm)}
@@ -367,12 +368,12 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 .footnote{max-width:1320px;margin:26px auto 0;padding:0 16px;color:var(--muted);font-size:12px;text-align:center}
 
 /* ---------------- responsive ---------------- */
-@media (max-width:1024px){
+@media screen and (max-width:1024px){
   .calWrap{grid-template-columns:1fr}
   .daypanel{position:static}
   .g2,.g3,.g4{grid-template-columns:1fr}
 }
-@media (max-width:760px){
+@media screen and (max-width:760px){
   body{font-size:14.5px}
   .app{padding:0 12px 64px}
   .topbar{padding:12px}
@@ -455,7 +456,7 @@ html[data-theme="dark"]{--trav:#a78bfa}
 .wkEmpty{font-size:11.5px;color:var(--muted);padding:12px 10px;text-align:center}
 .wkFoot{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:12px}
 .wkSign{color:var(--ink-2)}
-@media (max-width:900px){ .wkGrid{grid-template-columns:1fr;} }
+@media screen and (max-width:900px){ .wkGrid{grid-template-columns:1fr;} }
 @media print{
   .view.printable .wkSheet{box-shadow:none;border-color:#bbb;padding:0;margin:0}
   .view.printable .wkGrid{grid-template-columns:repeat(5,minmax(0,1fr))}
@@ -526,7 +527,7 @@ tr.picked{background:color-mix(in srgb, var(--brand-2) 12%, transparent)}
   .view.printable .cpSheet{max-width:none;padding:0}
   .view.printable .cpTable td.cprint{height:auto;min-height:84px}
 }
-@media (max-width:900px){
+@media screen and (max-width:900px){
   .hbar{grid-template-columns:1fr;gap:4px}
   .hbarVal{text-align:left}
 }
@@ -555,7 +556,7 @@ html[data-theme="dark"] a.btn.drv{color:#93b4ff;border-color:color-mix(in srgb, 
 .tev-subtab { padding:6px 14px; border-radius:8px; border:1px solid var(--line); background:var(--panel); cursor:pointer; font-size:13.5px; font-weight:600; }
 .tev-subtab.active { background:var(--brand); color:#fff; border-color:var(--brand); }
 .tev-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-@media (max-width: 640px) { .tev-form-grid { grid-template-columns:1fr; } }
+@media screen and (max-width: 640px) { .tev-form-grid { grid-template-columns:1fr; } }
 
 /* Vue views retain the legacy layout and use native buttons for calendar days. */
 .app-icon{display:inline-block;vertical-align:-3px;flex-shrink:0}
@@ -590,19 +591,187 @@ html[data-theme="dark"] a.btn.drv{color:#93b4ff;border-color:color-mix(in srgb, 
 .dashboard-bar-group > .small{margin-top:6px;font-size:11px}
 #view-travel .previewTable td{white-space:pre-wrap;overflow-wrap:anywhere}
 #view-travel .previewTable td:first-child{width:40%}
-@media(max-width:900px){.g2{grid-template-columns:1fr}.calGrid{min-width:650px}.formGrid{grid-template-columns:1fr}.span2{grid-column:1}.view-heading{gap:12px;align-items:flex-start}.hbar{grid-template-columns:minmax(100px,42%) 1fr 40px}}
+@media screen and (max-width:900px){.g2{grid-template-columns:1fr}.calGrid{min-width:650px}.formGrid{grid-template-columns:1fr}.span2{grid-column:1}.view-heading{gap:12px;align-items:flex-start}.hbar{grid-template-columns:minmax(100px,42%) 1fr 40px}}
 @media print{
-  .modalBg{display:none!important}
-  body.printing-area #app *{visibility:hidden}
-  body.printing-area #app .print-target,body.printing-area #app .print-target *{visibility:visible}
-  body.printing-area #app .print-target{position:absolute;left:0;top:0;width:100%;margin:0!important;max-width:none;display:block!important;background:white;color:black}
-  body.printing-area #app .print-target .no-print{display:none!important}
-  .print-target .tableWrap{overflow:visible}
-  .print-target table.tbl{min-width:0;font-size:10px}
-  .print-target table.tbl th{position:static}
-  .print-target .calGrid{min-width:0}
-  .print-target .calGrid td{height:90px}
-  .print-target .kpis{grid-template-columns:repeat(4,1fr)}
-  .print-target .card{break-inside:auto}
-  .print-target tr,.print-target .evItem{break-inside:avoid}
+  /* Hide non-printable UI elements */
+  .topbar, .tabs, .no-print, footer, .footnote, .toast, .modal, .modalBg { display: none !important; }
+
+  /* Ensure print document has light background and black default text */
+  :root, html, body {
+    background: #fff !important;
+    color: #000 !important;
+    color-scheme: light !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .app { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+  .card, .tableWrap { box-shadow: none !important; border-color: #cbd5e1 !important; }
+
+  /* Single area printing via printArea(id) */
+  body.printing-area #app * { visibility: hidden; }
+  body.printing-area #app .print-target, body.printing-area #app .print-target * { visibility: visible; }
+  body.printing-area #app .print-target {
+    position: absolute; left: 0; top: 0; width: 100% !important; margin: 0 !important;
+    max-width: none !important; display: block !important; background: #fff !important;
+    color: #000 !important; box-shadow: none !important; border: none !important; padding: 0 !important;
+  }
+  body.printing-area #app .print-target .no-print { display: none !important; }
+
+  /* Direct browser print (Ctrl+P) on Calendar view: hide the side/bottom daypanel */
+  #calendar-view .daypanel:not(.print-target) { display: none !important; }
+
+  /* Calendar Header */
+  .calNav {
+    display: flex !important; justify-content: space-between !important; align-items: baseline !important;
+    border-bottom: 2px solid #14532d !important; padding-bottom: 8px !important; margin-bottom: 12px !important;
+  }
+  .calNav h2 { font-size: 20px !important; font-weight: 800 !important; color: #14532d !important; }
+  .calNav .moy { font-size: 12px !important; color: #475569 !important; font-weight: 600 !important; }
+
+  /* Calendar Grid */
+  .calendar-scroll { overflow: visible !important; width: 100% !important; }
+  .calGrid {
+    width: 100% !important; min-width: 0 !important; table-layout: fixed !important;
+    border-collapse: collapse !important; border: 1.5px solid #94a3b8 !important; margin: 8px 0 !important;
+  }
+  .calGrid th {
+    background: #14532d !important; color: #ffffff !important; font-size: 11px !important; font-weight: 700 !important;
+    text-transform: uppercase !important; letter-spacing: .06em !important; padding: 6px 4px !important;
+    border: 1px solid #94a3b8 !important; text-align: center !important;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+  }
+  .calGrid td {
+    border: 1px solid #cbd5e1 !important; border-radius: 0 !important; background: #ffffff !important;
+    vertical-align: top !important; height: auto !important; min-height: 85px !important; padding: 4px 5px !important;
+    overflow: visible !important; break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+  }
+  .calGrid td.out { background: #f8fafc !important; opacity: 0.55 !important; }
+  .calGrid td.today { outline: 2px solid #14532d !important; outline-offset: -2px !important; }
+  .calGrid td:before, .calGrid td:after { display: none !important; }
+
+  .calendar-day {
+    display: block !important; width: 100% !important; min-height: 80px !important; height: auto !important;
+    background: transparent !important; border: none !important; padding: 0 !important;
+    color: #0f172a !important; text-align: left !important; cursor: default !important;
+  }
+
+  /* Date Header and Counts in each cell */
+  .dnum {
+    display: flex !important; align-items: center !important; justify-content: space-between !important;
+    margin-bottom: 3px !important; color: #0f172a !important;
+  }
+  .dnum .n { font-size: 12px !important; font-weight: 800 !important; color: #0f172a !important; }
+  .calGrid td.today .dnum .n {
+    background: #14532d !important; color: #ffffff !important; border-radius: 4px !important;
+    padding: 1px 5px !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+  }
+  .dnum .cnts { display: flex !important; gap: 2px !important; }
+  .dnum .c {
+    font-size: 9.5px !important; font-weight: 800 !important; padding: 1px 3px !important; border-radius: 3px !important;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+  }
+  .dnum .c.d { background: #e7f6ec !important; color: #15803d !important; border: 1px solid #15803d !important; }
+  .dnum .c.u { background: #fffbeb !important; color: #b45309 !important; border: 1px solid #b45309 !important; }
+  .dnum .c.l { background: #fef2f2 !important; color: #b91c1c !important; border: 1px solid #b91c1c !important; }
+  .dnum .c.t { background: #f5f3ff !important; color: #6d28d9 !important; border: 1px solid #7c3aed !important; }
+
+  /* CRITICAL: Calendar Entry Pills (.calEv) */
+  .calEv,
+  .calEv-overflow {
+    display: block !important; visibility: visible !important; font-size: 9.5px !important; line-height: 1.25 !important;
+    margin-top: 2.5px !important; padding: 2px 4px !important; border-radius: 4px !important;
+    white-space: normal !important; word-break: break-word !important; overflow: visible !important;
+    text-overflow: clip !important; border: 1px solid #cbd5e1 !important; border-left: 3.5px solid #64748b !important;
+    background: #f1f5f9 !important; color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+    page-break-inside: avoid !important; break-inside: avoid !important;
+  }
+  .calEv.d {
+    background: #e7f6ec !important; border-color: #bfe6cb !important; border-left-color: #15803d !important;
+    color: #064e3b !important; font-weight: 600 !important;
+  }
+  .calEv.o {
+    background: #eff6ff !important; border-color: #bfdbfe !important; border-left-color: #2563eb !important;
+    color: #1e3a8a !important; font-weight: 600 !important;
+  }
+  .calEv.p {
+    background: #fffbeb !important; border-color: #fde68a !important; border-left-color: #d97706 !important;
+    color: #78350f !important; font-weight: 600 !important;
+  }
+  .calEv.l {
+    background: #fef2f2 !important; border-color: #fecaca !important; border-left-color: #dc2626 !important;
+    color: #7f1d1d !important; font-weight: 700 !important;
+  }
+  .calEv.t {
+    background: #f5f3ff !important; border-color: #ddd6fe !important; border-left-color: #7c3aed !important;
+    color: #4c1d95 !important; font-weight: 600 !important;
+  }
+  .moreEv { display: none !important; }
+
+  /* Calendar Legend */
+  .legend.calendar-legend {
+    display: flex !important; flex-direction: row !important; flex-wrap: wrap !important; gap: 12px !important;
+    margin-top: 10px !important; padding-top: 8px !important; border-top: 1px solid #e2e8f0 !important;
+    font-size: 11px !important; color: #334155 !important;
+  }
+  .legend.calendar-legend span { display: inline-flex !important; align-items: center !important; gap: 5px !important; }
+  .legend.calendar-legend i {
+    display: inline-block !important; width: 12px !important; height: 12px !important; border-radius: 3px !important;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+  }
+  .legend.calendar-legend .lt { background: #7c3aed !important; }
+
+  /* Month KPIs */
+  .print-target .kpis,
+  .print-target .grid.g4,
+  #calendar-sheet .grid.g4 {
+    display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 8px !important; margin-top: 10px !important;
+  }
+  .print-target .kpi,
+  #calendar-sheet .kpi {
+    border: 1px solid #cbd5e1 !important; border-radius: 8px !important; padding: 6px 10px !important;
+    background: #f8fafc !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+  }
+  .print-target .kpi .lab,
+  #calendar-sheet .kpi .lab {
+    font-size: 10px !important; color: #475569 !important; font-weight: 600 !important; text-transform: uppercase !important;
+  }
+  .print-target .kpi .val,
+  #calendar-sheet .kpi .val {
+    font-size: 18px !important; font-weight: 800 !important; color: #0f172a !important;
+  }
+
+  /* Calendar Year View in Print */
+  .calYearWrap { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 10px !important; }
+  .mini {
+    break-inside: avoid !important; border: 1px solid #cbd5e1 !important; background: #fff !important;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+  }
+
+  /* Tables & Reports Print */
+  .print-target .tableWrap { overflow: visible !important; }
+  .print-target table.tbl {
+    min-width: 0 !important; width: 100% !important; font-size: 10px !important; border-collapse: collapse !important;
+  }
+  .print-target table.tbl th {
+    position: static !important; background: #f1f5f9 !important; color: #000 !important; border: 1px solid #cbd5e1 !important;
+  }
+  .print-target table.tbl td { border: 1px solid #cbd5e1 !important; }
+  .print-target tr, .print-target .evItem { break-inside: avoid !important; page-break-inside: avoid !important; }
+  .evItem {
+    background: #f8fafc !important; border: 1px solid #cbd5e1 !important; border-left-width: 4px !important;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+  }
+  .evItem.d { border-left-color: #15803d !important; }
+  .evItem.o { border-left-color: #2563eb !important; }
+  .evItem.p { border-left-color: #d97706 !important; }
+  .evItem.l { border-left-color: #dc2626 !important; }
+  .evItem.t { border-left-color: #7c3aed !important; }
+  .evItem .t { color: #0f172a !important; }
+
+  /* Chips */
+  .chip { border-color: #cbd5e1 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  .chip.t { background: #f5f3ff !important; color: #6d28d9 !important; border-color: #ddd6fe !important; }
+  .chip.done { background: #e7f6ec !important; color: #15803d !important; border-color: #bfe6cb !important; }
 }
