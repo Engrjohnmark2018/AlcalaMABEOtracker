@@ -240,6 +240,10 @@ function handleSubmit() {
     dateStr = `${travelStart.value} to ${travelEnd.value}`;
   }
   form.value.DATE_OF_TRAVEL = formatTravelDate(dateStr);
+  form.value.from = travelStart.value;
+  form.value.to = travelEnd.value || travelStart.value;
+  form.value.travelStart = travelStart.value;
+  form.value.travelEnd = travelEnd.value || travelStart.value;
 
   if (isEditing.value) {
     updateTevRequest(form.value.REQUEST_ID, form.value);

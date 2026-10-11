@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import { buildTravelDocx } from './docxEngine.js';
-import { formatTravelDate } from './dateUtils.js';
+import { formatTravelDate, formatDatePrepared } from './dateUtils.js';
 import { XLSX_MIME } from './storage.js';
 
 function unique(arr) {
@@ -141,12 +141,13 @@ export async function generateBatchZip({
   if (includeTO && toTemplateBuffer) {
     const toFolder = zip.folder(`TO-${batchId}`);
     for (const p of payloads) {
+      const datePreparedFormatted = formatDatePrepared(p.CREATION_DATE);
       const values = {
         REQUEST_ID: p.REQUEST_ID || '',
         BATCH_ID: batchId || '',
-        CREATION_DATE: p.CREATION_DATE || '',
-        Date_Prepared: p.CREATION_DATE || '',
-        CreationDate: p.CREATION_DATE || '',
+        CREATION_DATE: datePreparedFormatted,
+        Date_Prepared: datePreparedFormatted,
+        CreationDate: datePreparedFormatted,
         DESTINATION: p.DESTINATION || '',
         Destination: p.DESTINATION || '',
         ROUTE: p.ROUTE || '',

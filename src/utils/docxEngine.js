@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { TO_DOCX_MIME, TO_MAX_BYTES } from './storage.js';
+import { formatDatePrepared } from './dateUtils.js';
 
 export const TO_FIELDS = ['CreationDate', 'Purpose', 'TravelDate', 'Destination'];
 
@@ -79,6 +80,12 @@ export async function toInspect(ab) {
 
 export async function buildTravelDocx(ab, values) {
   if (typeof JSZip === 'undefined') throw new Error('JSZip library did not load.');
+  const mergedValues = { ...values };
+  for (const k of Object.keys(mergedValues)) {
+    if (k.toLowerCase() === 'date_prepared') {
+      mergedValues[k] = formatDatePrepared(mergedValues[k]);
+    }
+  }
   const zip = await JSZip.loadAsync(ab);
   const paths = toXmlPaths(zip);
   if (!paths.length) throw new Error('Not a valid Word .docx file (no document part found).');
@@ -87,11 +94,11 @@ export async function buildTravelDocx(ab, values) {
     const xml = await zip.file(p).async('string');
     const before = scanPlaceholders(xml);
     Object.keys(before).forEach((k) => { used[k] = (used[k] || 0) + before[k]; });
-    zip.file(p, replacePlaceholders(xml, values));
+    zip.file(p, replacePlaceholders(xml, mergedValues));
   }
   const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', mimeType: TO_DOCX_MIME });
   const eq = (a, b) => a.toLowerCase() === b.toLowerCase();
-  const keys = Object.keys(values);
+  const keys = Object.keys(mergedValues);
   const replaced = keys.filter((k) => Object.keys(used).some((u) => eq(u, k)));
   const missing = keys.filter((k) => !Object.keys(used).some((u) => eq(u, k)));
   return { bytes, replaced, missing, files: paths.length };

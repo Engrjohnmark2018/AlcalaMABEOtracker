@@ -2,13 +2,13 @@ import { reactive, watch } from 'vue';
 import {
   KEY, AKEY, AUTH, ROLES, STATUS, DEFAULT_SETTINGS,
   SEED_ENTRIES_RAW, DEFAULT_FARE_MATRIX, DEFAULT_TEV_REQUESTS
-} from '../utils/constants';
-import { store, sGet, sSet, sDel, lsObj } from '../utils/storage';
+} from '../utils/constants.js';
+import { store, sGet, sSet, sDel, lsObj } from '../utils/storage.js';
 import {
   todayISO, toISO, fromISO, addDays, isDate, diffDays, uid, num,
-  makeRequestId, formatTravelDate
-} from '../utils/dateUtils';
-import { pwHashes, matchMaster, matchUser, makeSalt } from '../utils/auth';
+  makeRequestId, formatTravelDate, parseDateRangeToISO
+} from '../utils/dateUtils.js';
+import { pwHashes, matchMaster, matchUser, makeSalt } from '../utils/auth.js';
 
 function seedEntries() {
   const T = todayISO();
@@ -79,6 +79,7 @@ export function cleanUser(u) {
 export function cleanTravel(t) {
   return {
     id: t && t.id ? String(t.id) : uid(),
+    requestId: String(t && t.requestId || '').trim(),
     travellerId: String(t && t.travellerId || ''),
     travellerName: String(t && t.travellerName || '').trim(),
     destination: String(t && t.destination || '').trim(),
@@ -261,7 +262,7 @@ export function loadState() {
     if (rawUi) {
       const u = JSON.parse(rawUi);
       if (u) {
-        if (u.view) state.activeTab = u.view;
+        if (u.view) state.activeTab = u.view === 'travel' ? 'tev' : u.view;
         if (u.theme) state.theme = u.theme;
         if (Number.isInteger(u.calYear)) state.calYear = u.calYear;
         if (Number.isInteger(u.calMonth) && u.calMonth >= 0 && u.calMonth < 12) state.calMonth = u.calMonth;
@@ -276,6 +277,13 @@ export function loadState() {
         if (u.wk) state.wk = Object.assign(state.wk, u.wk);
       }
     }
+
+    if (state.activeTab === 'travel') {
+      state.activeTab = 'tev';
+    }
+
+    // Run auto-migration to seamlessly upgrade existing storage without clearing entries
+    autoMigrateStorage();
   } catch (e) {
     console.error('Error loading state from storage:', e);
   }
@@ -393,10 +401,171 @@ export function autoCheckSession() {
   state.isLocked = true;
 }
 
+// ----------------- Auto-migration without clearing storage -----------------
+export function autoMigrateStorage() {
+  let changed = false;
+
+  // 1. Existing Work & Accomplishment entries in state.entries are strictly preserved.
+
+  // 2. TEV requests initialization / migration:
+  // If state.tevRequests is empty in this browser's localStorage,
+  // either migrate any existing travels from state.travels or populate from DEFAULT_TEV_REQUESTS.
+  if (!Array.isArray(state.tevRequests) || state.tevRequests.length === 0) {
+    if (Array.isArray(state.travels) && state.travels.length > 0) {
+      state.tevRequests = state.travels.map((t) => {
+        const reqId = t.requestId || makeRequestId();
+        t.requestId = reqId;
+        return cleanTevRequest({
+          GENERATE: false,
+          REQUEST_ID: reqId,
+          CREATION_DATE: t.orderDate || todayISO(),
+          DESTINATION: t.destination,
+          DATE_OF_TRAVEL: formatTravelDate(t.from === t.to ? t.from : `${t.from} to ${t.to}`),
+          PURPOSE: t.purpose || t.destination,
+          TO_FILE_LINK: t.docGenerated ? 'generated' : ''
+        });
+      });
+      changed = true;
+    } else if (Array.isArray(DEFAULT_TEV_REQUESTS) && DEFAULT_TEV_REQUESTS.length > 0) {
+      state.tevRequests = DEFAULT_TEV_REQUESTS.map(cleanTevRequest);
+      changed = true;
+    }
+  }
+
+  // 3. For any existing travels in state.travels from the previous Travel Order tab:
+  // Ensure purpose is populated, dates are valid ISO, and they are linked to a TEV request.
+  if (Array.isArray(state.travels)) {
+    state.travels.forEach((t) => {
+      // If purpose is missing, match with TEV request by requestId or destination
+      if (!t.purpose || !t.purpose.trim()) {
+        const match = state.tevRequests.find((r) =>
+          (t.requestId && r.REQUEST_ID === t.requestId) ||
+          (r.DESTINATION && t.destination && r.DESTINATION.toLowerCase() === t.destination.toLowerCase())
+        );
+        if (match && match.PURPOSE) {
+          t.purpose = match.PURPOSE;
+          changed = true;
+        } else if (t.destination) {
+          t.purpose = t.destination;
+          changed = true;
+        }
+      }
+
+      // Ensure from and to are valid ISO dates for calendar display
+      if (!isDate(t.from) || !isDate(t.to)) {
+        const parsed = parseDateRangeToISO(t.from || t.to || t.orderDate || todayISO());
+        if (parsed.from && parsed.from !== t.from) { t.from = parsed.from; changed = true; }
+        if (parsed.to && parsed.to !== t.to) { t.to = parsed.to; changed = true; }
+      }
+
+      // Ensure linked to a TEV request
+      if (!t.requestId) {
+        const match = state.tevRequests.find((r) =>
+          r.DESTINATION && t.destination && r.DESTINATION.toLowerCase() === t.destination.toLowerCase()
+        );
+        if (match) {
+          t.requestId = match.REQUEST_ID;
+          changed = true;
+        } else {
+          const newReq = cleanTevRequest({
+            REQUEST_ID: makeRequestId(),
+            CREATION_DATE: t.orderDate || todayISO(),
+            DESTINATION: t.destination,
+            DATE_OF_TRAVEL: formatTravelDate(t.from === t.to ? t.from : `${t.from} to ${t.to}`),
+            PURPOSE: t.purpose,
+            TO_FILE_LINK: t.docGenerated ? 'generated' : ''
+          });
+          t.requestId = newReq.REQUEST_ID;
+          state.tevRequests.push(newReq);
+          changed = true;
+        }
+      }
+    });
+  }
+
+  // 4. Ensure all TEV requests are present in state.travels (calendar data) with purpose:
+  if (Array.isArray(state.tevRequests)) {
+    state.tevRequests.forEach((req) => {
+      const existing = state.travels.find((t) =>
+        (t.requestId && t.requestId === req.REQUEST_ID) ||
+        (t.destination && req.DESTINATION && t.destination.toLowerCase() === req.DESTINATION.toLowerCase())
+      );
+
+      if (!existing) {
+        syncTevToCalendar(req);
+        changed = true;
+      } else {
+        if (!existing.requestId) {
+          existing.requestId = req.REQUEST_ID;
+          changed = true;
+        }
+        if (!existing.purpose || (req.PURPOSE && existing.purpose !== req.PURPOSE)) {
+          existing.purpose = req.PURPOSE || existing.destination;
+          changed = true;
+        }
+        if (!isDate(existing.from) || !isDate(existing.to)) {
+          const parsed = parseDateRangeToISO(req.DATE_OF_TRAVEL);
+          if (parsed.from) existing.from = parsed.from;
+          if (parsed.to) existing.to = parsed.to;
+          changed = true;
+        }
+      }
+    });
+  }
+
+  // 5. Ensure deprecated 'travel' tab redirects to 'tev'
+  if (state.activeTab === 'travel') {
+    state.activeTab = 'tev';
+    saveUi();
+  }
+
+  // 6. Persist if any auto-migration updates occurred
+  if (changed) {
+    saveState();
+  }
+}
+
 // ----------------- TEV Automation Actions -----------------
+export function syncTevToCalendar(req, extra = {}) {
+  let from = '';
+  let to = '';
+  if (extra.travelStart || extra.from) {
+    from = extra.travelStart || extra.from;
+    to = extra.travelEnd || extra.to || from;
+  } else {
+    const parsed = parseDateRangeToISO(req.DATE_OF_TRAVEL);
+    from = parsed.from || todayISO();
+    to = parsed.to || from || todayISO();
+  }
+
+  const travellerName = state.auth.name || 'ABE Staff';
+  const travellerId = state.auth.id || '';
+
+  const idx = state.travels.findIndex((t) => t.requestId && t.requestId === req.REQUEST_ID);
+  const travelData = {
+    requestId: req.REQUEST_ID,
+    travellerId: (idx >= 0 && state.travels[idx].travellerId) ? state.travels[idx].travellerId : travellerId,
+    travellerName: (idx >= 0 && state.travels[idx].travellerName) ? state.travels[idx].travellerName : travellerName,
+    destination: req.DESTINATION,
+    purpose: req.PURPOSE,
+    from,
+    to,
+    orderDate: req.CREATION_DATE && isDate(req.CREATION_DATE) ? req.CREATION_DATE : todayISO(),
+    docGenerated: !!req.TO_FILE_LINK,
+    createdByName: (idx >= 0 && state.travels[idx].createdByName) ? state.travels[idx].createdByName : (state.auth.name || '')
+  };
+
+  if (idx >= 0) {
+    state.travels[idx] = cleanTravel(Object.assign({}, state.travels[idx], travelData));
+  } else {
+    state.travels.unshift(cleanTravel(travelData));
+  }
+}
+
 export function addTevRequest(payload) {
   const req = cleanTevRequest(payload);
   state.tevRequests.unshift(req);
+  syncTevToCalendar(req, payload);
   saveState();
   notify(`Added travel request: ${req.DESTINATION}`);
   return req;
@@ -406,6 +575,7 @@ export function updateTevRequest(requestId, payload) {
   const idx = state.tevRequests.findIndex((r) => r.REQUEST_ID === requestId);
   if (idx < 0) throw new Error('Request not found: ' + requestId);
   state.tevRequests[idx] = cleanTevRequest(Object.assign({}, state.tevRequests[idx], payload));
+  syncTevToCalendar(state.tevRequests[idx], payload);
   saveState();
   notify('Request updated successfully.');
   return state.tevRequests[idx];
@@ -413,13 +583,16 @@ export function updateTevRequest(requestId, payload) {
 
 export function deleteTevRequest(requestId) {
   state.tevRequests = state.tevRequests.filter((r) => r.REQUEST_ID !== requestId);
+  state.travels = state.travels.filter((t) => t.requestId !== requestId);
   saveState();
   notify('Request deleted.');
 }
 
 export function deleteCheckedTevRequests() {
-  const count = state.tevRequests.filter((r) => r.GENERATE).length;
+  const markedIds = new Set(state.tevRequests.filter((r) => r.GENERATE).map((r) => r.REQUEST_ID));
+  const count = markedIds.size;
   state.tevRequests = state.tevRequests.filter((r) => !r.GENERATE);
+  state.travels = state.travels.filter((t) => !markedIds.has(t.requestId));
   saveState();
   notify(`Deleted ${count} request(s).`);
   return count;
@@ -451,6 +624,11 @@ export function updateTevBatch(requestIds, batchId, links = {}) {
       if (links.coe) r.COE_FILE_LINK = links.coe;
       if (links.ctc) r.CTC_FILE_LINK = links.ctc;
       if (links.folder) r.OUTPUT_FOLDER_LINK = links.folder;
+    }
+  });
+  state.travels.forEach((t) => {
+    if (t.requestId && idSet.has(t.requestId)) {
+      t.docGenerated = true;
     }
   });
   saveState();
@@ -584,12 +762,28 @@ export function updateTravel(id, t) {
   const idx = state.travels.findIndex((x) => x.id === id);
   if (idx < 0) throw new Error('Travel not found');
   state.travels[idx] = cleanTravel(Object.assign({}, state.travels[idx], t));
+  if (state.travels[idx].requestId) {
+    const rIdx = state.tevRequests.findIndex((r) => r.REQUEST_ID === state.travels[idx].requestId);
+    if (rIdx >= 0) {
+      state.tevRequests[rIdx].DESTINATION = state.travels[idx].destination;
+      state.tevRequests[rIdx].PURPOSE = state.travels[idx].purpose;
+      state.tevRequests[rIdx].DATE_OF_TRAVEL = formatTravelDate(
+        state.travels[idx].from === state.travels[idx].to
+          ? state.travels[idx].from
+          : `${state.travels[idx].from} to ${state.travels[idx].to}`
+      );
+    }
+  }
   saveState();
   notify('Travel record updated.');
   return state.travels[idx];
 }
 
 export function deleteTravel(id) {
+  const trv = state.travels.find((x) => x.id === id);
+  if (trv && trv.requestId) {
+    state.tevRequests = state.tevRequests.filter((x) => x.REQUEST_ID !== trv.requestId);
+  }
   state.travels = state.travels.filter((x) => x.id !== id);
   saveState();
   notify('Travel record deleted.');

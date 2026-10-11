@@ -38,9 +38,6 @@
         v-else-if="state.activeTab === 'weekly'"
       />
 
-      <!-- Travel Order -->
-      <TravelOrderView v-else-if="state.activeTab === 'travel'" />
-
       <!-- Travel expense document processing -->
       <TevAutomationView
         v-else-if="state.activeTab === 'tev'"
@@ -90,7 +87,6 @@ import PpaView from './components/ppa/PpaView.vue';
 import TasksView from './components/tasks/TasksView.vue';
 import CalendarView from './components/calendar/CalendarView.vue';
 import WeeklyScheduleView from './components/weekly/WeeklyScheduleView.vue';
-import TravelOrderView from './components/travel/TravelOrderView.vue';
 import TevAutomationView from './components/tev/TevAutomationView.vue';
 import ReportsView from './components/reports/ReportsView.vue';
 import InsightsView from './components/insights/InsightsView.vue';

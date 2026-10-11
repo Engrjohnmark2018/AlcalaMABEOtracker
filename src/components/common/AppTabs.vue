@@ -32,7 +32,6 @@ const tabs = computed(() => [
   { id: 'tasks', label: 'Work & Accomplishments', badge: openTasksCount.value > 0 ? openTasksCount.value : null },
   { id: 'calendar', label: 'Calendar', badge: openTasksCount.value || null },
   { id: 'weekly', label: 'Weekly Schedule' },
-  { id: 'travel', label: 'Travel Order' },
   { id: 'tev', label: 'Travel & Expenses', badge: tevMarkedCount.value > 0 ? tevMarkedCount.value : null },
   { id: 'reports', label: 'Reports' },
   { id: 'insights', label: 'Insights' },

@@ -5,6 +5,8 @@ import { readFile } from 'node:fs/promises';
 import { scanPlaceholders, replacePlaceholders, buildTravelDocx, toInspect } from '../src/utils/docxEngine.js';
 import { monthCells, reportRange, overlapsRange, travelDays, entriesForDate, summarize } from '../src/utils/trackerMetrics.js';
 import { generateWeeklyPdf, weekScheduleData } from '../src/utils/pdfEngine.js';
+import { formatDatePrepared, parseDateRangeToISO } from '../src/utils/dateUtils.js';
+import { state, autoMigrateStorage } from '../src/store/state.js';
 
 test('Word replacement preserves split runs, formatting, suffixes, and escaped values', () => {
   const xml='<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Before {</w:t></w:r><w:r><w:t>{ Pur</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>pose }} after {{Destination}}</w:t></w:r></w:p>';
@@ -69,3 +71,60 @@ test('multi-page weekly PDFs keep fonts and page object IDs distinct',()=>{
   assert.match(pdf,/9 0 obj\n<< \/Length/);
   const ids=[...pdf.matchAll(/^(\d+) 0 obj/gm)].map(m=>m[1]);assert.equal(ids.length,new Set(ids).size);
 });
+
+test('formatDatePrepared formats ISO dates as MMMM D, YYYY e.g. October 11, 2026', () => {
+  assert.equal(formatDatePrepared('2026-10-11'), 'October 11, 2026');
+  assert.equal(formatDatePrepared('October 11, 2026'), 'October 11, 2026');
+  assert.equal(formatDatePrepared('46080.33333333333'), 'February 27, 2026');
+  assert.match(formatDatePrepared(''), /^[A-Z][a-z]+\s+\d{1,2},\s*\d{4}$/);
+});
+
+test('parseDateRangeToISO correctly extracts from and to dates', () => {
+  assert.deepEqual(parseDateRangeToISO('2026-10-11'), { from: '2026-10-11', to: '2026-10-11' });
+  assert.deepEqual(parseDateRangeToISO('January 21, 2026'), { from: '2026-01-21', to: '2026-01-21' });
+  assert.deepEqual(parseDateRangeToISO('January 28-30, 2026'), { from: '2026-01-28', to: '2026-01-30' });
+  assert.deepEqual(parseDateRangeToISO('April 21, 2026 – April 24, 2026'), { from: '2026-04-21', to: '2026-04-24' });
+});
+
+test('Travel Order Template.docx fills {{Date_Prepared}} formatted as October 11, 2026', async () => {
+  const bytes = await readFile(new URL('../public/templates/Travel Order Template.docx', import.meta.url));
+  const built = await buildTravelDocx(bytes, {
+    Date_Prepared: '2026-10-11',
+    Destination: 'Tuguegarao City',
+    Date_of_Travel: 'October 15, 2026',
+    Purpose: 'Attend Regional Engineering Conference'
+  });
+  const out = await JSZip.loadAsync(built.bytes);
+  const docXml = await out.file('word/document.xml').async('string');
+  assert.ok(docXml.includes('October 11, 2026'));
+  assert.ok(!docXml.includes('{{Date_Prepared}}'));
+});
+
+test('autoMigrateStorage preserves existing work entries while syncing TEV requests with purpose to calendar', () => {
+  state.entries = [
+    { id: 'custom-1', title: 'User Work Accomplishment 1', category: 'Engineering', status: 'open', dueDate: '2026-10-15' },
+    { id: 'custom-2', title: 'User Work Accomplishment 2', category: 'Admin', status: 'done', dueDate: '2026-10-10', completedDate: '2026-10-09' }
+  ];
+  state.travels = [
+    { id: 'old-trv-1', destination: 'Tuguegarao City', from: '2026-10-20', to: '2026-10-22', purpose: 'Old tab mission without requestId' }
+  ];
+  state.tevRequests = []; // Simulated existing storage with empty TEV
+
+  autoMigrateStorage();
+
+  // 1. Work entries are strictly preserved!
+  assert.equal(state.entries.length, 2);
+  assert.equal(state.entries[0].title, 'User Work Accomplishment 1');
+
+  // 2. Old travel is migrated to TEV with linked requestId and purpose
+  assert.ok(state.tevRequests.some(r => r.DESTINATION === 'Tuguegarao City' && r.PURPOSE === 'Old tab mission without requestId'));
+
+  // 3. Calendar travels have purpose populated and valid dates
+  const trv = state.travels.find(t => t.destination === 'Tuguegarao City');
+  assert.ok(trv);
+  assert.equal(trv.purpose, 'Old tab mission without requestId');
+  assert.equal(trv.from, '2026-10-20');
+  assert.equal(trv.to, '2026-10-22');
+  assert.ok(trv.requestId);
+});
+

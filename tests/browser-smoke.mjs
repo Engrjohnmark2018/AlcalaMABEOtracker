@@ -22,23 +22,11 @@ try{
   assert.ok(await page.$eval('main',e=>e.textContent.includes('Accomplishment trend')));
   await page.screenshot({path:path.join(output,'dashboard.png'),fullPage:true});
   const labels=await page.$$eval('.tab',els=>els.map(e=>e.textContent));
-  assert.ok(labels.some(t=>t.includes('Travel & Expenses')));assert.ok(!labels.some(t=>t.includes('✈')||t.includes('TEV Automation')));
-  assert.ok(labels.some(t=>t.trim()==='Travel Order'));
+  assert.ok(labels.some(t=>t.includes('Travel & Expenses')));
+  assert.ok(!labels.some(t=>t.trim()==='Travel Order'));
   assert.equal(await page.$('.workspace-tabs'),null);
-  await tab('Travel Order');await page.waitForSelector('#to-created');
-  await fill('#to-dest','Tuguegarao City, Cagayan');await fill('#to-purpose','Inspect demo facility & attend consultation');await fill('#to-from','2026-10-10');await fill('#to-to','2026-10-12');
-  await page.type('input[placeholder="e.g. Engr. Juan Dela Cruz — ABE Staff"]','Test Traveller');
-  assert.equal(await page.$eval('#to-datetext',e=>e.value),'October 10–12, 2026 (3 days)');
-  await fill('#to-datetext','Custom travel wording');await fill('#to-to','2026-10-13');assert.equal(await page.$eval('#to-datetext',e=>e.value),'Custom travel wording');
-  await page.click('button[title="Rebuild this wording from the two dates"]');
-  await page.screenshot({path:path.join(output,'travel-order.png'),fullPage:true});
-  await clickText('Template settings');await page.waitForSelector('#to-template');
-  const file=await page.$('#to-template');await file.uploadFile(path.resolve('public/templates/Sample-Travel-Order-Template.docx'));
-  await page.waitForFunction(()=>document.querySelector('#travel-template-settings')?.textContent.includes('Template loaded'));
-  await clickText('Open Travel Order generator');await page.waitForSelector('#to-dest');
-  assert.equal(await page.$eval('#to-dest',e=>e.value),'Tuguegarao City, Cagayan');
-  await clickText('Generate & download');
-  await page.waitForFunction(()=>document.querySelector('#view-travel')?.textContent.includes('Test Traveller')&&document.querySelector('#view-travel')?.textContent.includes('Downloaded'));
+  await tab('Travel & Expenses');
+  await page.screenshot({path:path.join(output,'travel-expenses.png'),fullPage:true});
   // Seed deterministic dates and a spanning travel through the app store in this
   // isolated browser context. No existing workstation records are touched.
   await page.evaluate(async()=>{
@@ -75,18 +63,13 @@ try{
   await tab('Insights');await page.waitForFunction(()=>document.querySelector('main')?.textContent.includes('Year-over-year accomplishments'));assert.ok(await page.$eval('main',e=>e.textContent.includes('Year-over-year accomplishments')));
   await tab('PPA Overview');await tab('Settings');
   await page.reload({waitUntil:'networkidle0'});await tab('Calendar');assert.equal(await page.$eval('.calNav h2',e=>e.textContent),'October 2026');
-  await page.setViewport({width:390,height:844});await tab('Travel Order');await page.waitForSelector('#to-dest');
+  await page.setViewport({width:390,height:844});await tab('Travel & Expenses');await page.waitForSelector('.topActions');
   await page.screenshot({path:path.join(output,'travel-mobile.png'),fullPage:true});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'Mobile page overflows');
   assert.deepEqual(errors,[]);
   // Give Chromium downloads time to finish before reading the files.
   await new Promise(resolve=>setTimeout(resolve,800));
   const files=await readdir(output);
-  assert.ok(files.some(f=>f.endsWith('.docx')&&f.startsWith('Travel-Order')));
-  const docName=files.find(f=>f.endsWith('.docx')&&f.startsWith('Travel-Order'));
-  const zip=await JSZip.loadAsync(await readFile(path.join(output,docName)));
-  const xml=await zip.file('word/document.xml').async('string');assert.ok(xml.includes('Inspect demo facility &amp; attend consultation'));
-  const parseErrors=await page.evaluate(xml=>new DOMParser().parseFromString(xml,'application/xml').querySelectorAll('parsererror').length,xml);assert.equal(parseErrors,0);
   assert.ok(files.some(f=>f.startsWith('Weekly-Schedule')&&f.endsWith('.png')));
   assert.ok(files.some(f=>f.startsWith('Weekly-Schedule')&&f.endsWith('.pdf')));
   assert.ok(files.some(f=>f.startsWith('ABE-Report')&&f.endsWith('.csv')));

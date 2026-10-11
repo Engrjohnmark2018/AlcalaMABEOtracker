@@ -242,9 +242,9 @@
 import { ref, computed } from 'vue';
 import {
   state, deleteTevRequest, deleteCheckedTevRequests, toggleSelectAllTev,
-  toggleSelectTev, updateTevBatch, notify
+  toggleSelectTev, updateTevBatch, notify, saveState, syncTevToCalendar
 } from '../../store/state';
-import { makeBatchId } from '../../utils/dateUtils';
+import { makeBatchId, formatDatePrepared } from '../../utils/dateUtils';
 import { downloadBinary, TO_DOCX_MIME, XLSX_MIME, tevTemplateGet } from '../../utils/storage';
 import { buildTravelDocx } from '../../utils/docxEngine';
 import {
@@ -371,12 +371,13 @@ async function generateSingleTO(req) {
   try {
     notify(`Generating Travel Order for ${req.DESTINATION}…`);
     const tplBuffer = await getTemplateBuffer('to', `${baseUrl}templates/Travel Order Template.docx`);
+    const datePreparedFormatted = formatDatePrepared(req.CREATION_DATE);
     const values = {
       REQUEST_ID: req.REQUEST_ID || '',
       BATCH_ID: req.BATCH_ID || '',
-      CREATION_DATE: req.CREATION_DATE || '',
-      Date_Prepared: req.CREATION_DATE || '',
-      CreationDate: req.CREATION_DATE || '',
+      CREATION_DATE: datePreparedFormatted,
+      Date_Prepared: datePreparedFormatted,
+      CreationDate: datePreparedFormatted,
       DESTINATION: req.DESTINATION || '',
       Destination: req.DESTINATION || '',
       ROUTE: req.ROUTE || '',
@@ -463,12 +464,13 @@ async function generateTOOnly() {
       // Multiple: bundle in a zip
       const zip = new JSZip();
       for (const p of selected) {
+        const datePreparedFormatted = formatDatePrepared(p.CREATION_DATE);
         const values = {
           REQUEST_ID: p.REQUEST_ID || '',
           BATCH_ID: batchId,
-          CREATION_DATE: p.CREATION_DATE || '',
-          Date_Prepared: p.CREATION_DATE || '',
-          CreationDate: p.CREATION_DATE || '',
+          CREATION_DATE: datePreparedFormatted,
+          Date_Prepared: datePreparedFormatted,
+          CreationDate: datePreparedFormatted,
           DESTINATION: p.DESTINATION || '',
           Destination: p.DESTINATION || '',
           ROUTE: p.ROUTE || '',
@@ -570,6 +572,8 @@ async function handleImportExcel(event) {
 
     if (confirm(`Import ${imported.length} travel requests into tracker?`)) {
       state.tevRequests = [...imported, ...state.tevRequests];
+      imported.forEach((r) => syncTevToCalendar(r));
+      saveState();
       notify(`Successfully imported ${imported.length} requests!`);
     }
   } catch (e) {
