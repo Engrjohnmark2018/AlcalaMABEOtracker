@@ -267,7 +267,7 @@ export function loadState() {
         if (Number.isInteger(u.calYear)) state.calYear = u.calYear;
         if (Number.isInteger(u.calMonth) && u.calMonth >= 0 && u.calMonth < 12) state.calMonth = u.calMonth;
         if (['auto','due','done'].includes(u.calMode)) state.calMode = u.calMode;
-        if (['month','year'].includes(u.calView)) state.calView = u.calView;
+        if (['month','year','kanban'].includes(u.calView)) state.calView = u.calView;
         if (isDate(u.selDate)) state.selDate = u.selDate;
         if (u.ppaSort) state.ppaSort = u.ppaSort;
         if (u.f) state.filters = Object.assign(state.filters, u.f);

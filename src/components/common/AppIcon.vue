@@ -36,5 +36,8 @@ const paths = {
   user:['M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z','M4 21v-2a8 8 0 0 1 16 0v2'],
   calendar:['M3 5h18v16H3Z','M7 3v4M17 3v4M3 10h18M7 14h2M13 14h2M7 18h2'],
   switch:['M3 7h18l-4-4M21 17H3l4 4'],
+  kanban:['M3 3h4v18H3ZM10 3h4v12h-4ZM17 3h4v8h-4Z'],
+  list:['M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'],
+  grid:['M3 3h7v7H3ZM14 3h7v7h-7ZM14 14h7v7h-7ZM3 14h7v7H3Z'],
 };
 </script>

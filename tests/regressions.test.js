@@ -146,3 +146,32 @@ test('Calendar print styling ensures entries, purpose pills and colors are visib
   assert.match(css, /\.calEv\.p\s*\{[^}]*background:\s*#fffbeb\s*!important/s);
 });
 
+test('Calendar tab provides Status Kanban board in DayPanel and Monthly Kanban view in CalendarView', async () => {
+  const dayPanelVue = await readFile('src/components/calendar/DayPanel.vue', 'utf-8');
+  const calViewVue = await readFile('src/components/calendar/CalendarView.vue', 'utf-8');
+  const css = await readFile('src/assets/styles/main.css', 'utf-8');
+
+  // 1. DayPanel contains kanban-board with Pending, Ongoing, Accomplished, and Travel columns
+  assert.ok(dayPanelVue.includes('kanban-board'), 'DayPanel must render kanban-board');
+  assert.ok(dayPanelVue.includes('kanban-col pend'), 'DayPanel must have Pending column');
+  assert.ok(dayPanelVue.includes('kanban-col open'), 'DayPanel must have Ongoing column');
+  assert.ok(dayPanelVue.includes('kanban-col done'), 'DayPanel must have Accomplished column');
+  assert.ok(dayPanelVue.includes('kanban-col trav'), 'DayPanel must have Travel Orders column');
+
+  // 2. DayPanel supports view toggle between Kanban and List
+  assert.ok(dayPanelVue.includes("dayViewMode === 'kanban'"), 'DayPanel must support Kanban mode');
+  assert.ok(dayPanelVue.includes("dayViewMode === 'list'"), 'DayPanel must support List mode');
+
+  // 3. Drag and drop and status transition actions are present
+  assert.ok(dayPanelVue.includes('handleDrop'), 'DayPanel must support drop handler for status updates');
+  assert.ok(dayPanelVue.includes('moveToStatus'), 'DayPanel must support moveToStatus');
+
+  // 4. CalendarView supports Month / Year / Kanban view options
+  assert.ok(calViewVue.includes("setView('kanban')"), 'CalendarView must have Kanban view button');
+  assert.ok(calViewVue.includes('calKanbanWrap'), 'CalendarView must render calKanbanWrap');
+
+  // 5. CSS defines .kanban-board and responsive grid
+  assert.match(css, /\.kanban-board\s*\{[^}]*grid-template-columns:/);
+});
+
+
